@@ -5,6 +5,7 @@ from datetime import timedelta, datetime
 import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.types import InputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.utils import executor
 import asyncio
 
@@ -18,10 +19,6 @@ API_TOKEN = '6374996873:AAHC8QoTa9Bfwme-CMaRB0rADZuuWevADxw'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
 # logging.basicConfig(level=logging.INFO)
-
-# Directory where the images are located
-IMAGES_DIRECTORY = 'images'
-image_files = ['images/1.jpg', 'images/2.jpg', 'images/3.jpg', 'images/4.jpg', 'images/5.jpg', 'images/6.jpg']
 
 # Словарь с вопросами и соответствующими callback_data
 questions_dict = {
@@ -39,48 +36,53 @@ questions_dict = {
 }
 
 
-class ImageState(StatesGroup):
-    waiting_for_start = State()
-    waiting_for_next = State()
+# Загрузка списка картинок
+images_list = ['images/1.jpg', 'images/2.jpg', 'images/3.jpg', 'images/4.jpg', 'images/5.jpg', 'images/6.jpg']
 
+# Функция для создания инлайн кнопки "Далее"
+def get_inline_keyboard():
+    inline_keyboard = InlineKeyboardMarkup()
+    inline_keyboard.add(InlineKeyboardButton("Далее", callback_data="next"))
+    return inline_keyboard
 
-async def send_image(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    current_image_index = data.get("current_image_index", 0)
-    if current_image_index < len(image_files):
-        with open(image_files[current_image_index], 'rb') as photo:
-            await bot.send_photo(message.from_user.id, photo)
-        await asyncio.sleep(1)
-        await bot.send_message(message.from_user.id, "Нажмите кнопку 'далее', чтобы продолжить.",
-                               reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add(
-                                   types.KeyboardButton("далее")))
-        await ImageState.waiting_for_next.set()
+# Функция для отправки следующей картинки
+async def send_next_image(message: types.Message):
+    if not hasattr(send_next_image, "current_image_index"):
+        send_next_image.current_image_index = 0
+
+    current_image_index = send_next_image.current_image_index
+
+    if current_image_index < len(images_list):
+        image_path = images_list[current_image_index]
+        with open(image_path, 'rb') as photo:
+            await message.answer_photo(photo, reply_markup=get_inline_keyboard())
+
+        send_next_image.current_image_index += 1
     else:
-        keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        buttons_row1 = ["Торговые советники"]
-        buttons_row2 = ["Расчет профита", "FAQ"]
-        buttons_row3 = ["Новости недели"]
-        keyboard_markup.add(*buttons_row1)
-        keyboard_markup.row(*buttons_row2)
-        keyboard_markup.row(*buttons_row3)
-        await message.answer("Привет! Что вас интересует?", reply_markup=keyboard_markup)
-        await state.finish()
+        await show_main_menu(message)
 
+# Функция для показа главного меню
+async def show_main_menu(message: types.Message):
+    keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons_row1 = ["Торговые советники"]
+    buttons_row2 = ["Расчет профита", "FAQ"]
+    buttons_row3 = ["Новости недели"]
+    keyboard_markup.add(*buttons_row1)
+    keyboard_markup.row(*buttons_row2)
+    keyboard_markup.row(*buttons_row3)
+    await message.answer("Привет! Что вас интересует?", reply_markup=keyboard_markup)
 
-@dp.message_handler(commands=['start'], state="*")
-async def start(message: types.Message, state: FSMContext):
-    await state.finish()
-    await state.set_data({"current_image_index": 0})
-    await send_image(message, state)
+# Обработчик команды /start
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    send_next_image.current_image_index = 0
+    await send_next_image(message)
 
-
-@dp.message_handler(lambda message: message.text.lower() == "далее", state=ImageState.waiting_for_next)
-async def next_image(message: types.Message, state: FSMContext):
-    current_image_index = await state.get_data()
-    current_image_index = current_image_index.get("current_image_index", 0)
-    current_image_index += 1
-    await state.set_data({"current_image_index": current_image_index})
-    await send_image(message, state)
+# Обработчик нажатия на инлайн кнопку "Далее"
+@dp.callback_query_handler(lambda c: c.data == 'next')
+async def process_callback_next(callback_query: CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await send_next_image(callback_query.message)
 
 
 async def fetch_calendar_events(start_date, end_date):
