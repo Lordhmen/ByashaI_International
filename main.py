@@ -35,6 +35,23 @@ questions_dict = {
     'forex_for_beginners': "FOREX для начинающих"
 }
 
+faq_dict = {
+    "question1": ["Торговый советник ( робот ) – это ?!", "Ответ на вопрос 1"],
+    "question2": ["Кому подойдет торговый советник ?!", "Ответ на вопрос 2"],
+    "question3": ["Отличия торгового советника EVE от HERME$", "Ответ на вопрос 3"],
+    "question4": ["Депозит | пополнение | вывод средств", "Ответ на вопрос 4"],
+    "question5": ["Где | как и на чём происходит торговля ?!", "Ответ на вопрос 5"],
+    "question6": ["Почему именно МЫ, а не конкуренты ?!", "Ответ на вопрос 6"],
+    "question7": ["Покупая торгового советника, вы получаете", "Ответ на вопрос 7"],
+    "question8": ["Отличия торгового советника, от трейдинга ( торговли руками )", "Ответ на вопрос 8"],
+    "question9": ["Почему именно золото | доллар XAU | USD, а не другие валюты ?!", "Ответ на вопрос 9"],
+    "question10": ["Доходность | с какой суммы можно начать ?!", "Ответ на вопрос 10"],
+    "question11": ["Нужны ли знания|обучения|образование ?!", "Ответ на вопрос 11"],
+    "question12": ["Что входит помимо торгового советника ?!", "Ответ на вопрос 12"],
+    "question13": ["Кредиты | займы | последние деньги", "Ответ на вопрос 13"],
+    "question14": ["Рекомендуемые настройки", "Ответ на вопрос 14"],
+}
+
 # Загрузка списка картинок
 images_list = ['images/1.jpg', 'images/2.jpg', 'images/3.jpg', 'images/4.jpg', 'images/5.jpg', 'images/6.jpg']
 
@@ -67,8 +84,8 @@ async def send_next_image(message: types.Message):
 async def show_main_menu(message: types.Message):
     keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons_row1 = ["Торговые советники"]
-    buttons_row2 = ["Расчет профита", "FAQ"]
-    buttons_row3 = ["Новости недели"]
+    buttons_row2 = ["Расчет профита", "Новости недели"]
+    buttons_row3 = ["Необходимые сервисы", "FAQ"]
     keyboard_markup.add(*buttons_row1)
     keyboard_markup.row(*buttons_row2)
     keyboard_markup.row(*buttons_row3)
@@ -242,8 +259,8 @@ async def finish_profit_calculation(message: types.Message, state: FSMContext):
     # Создаем новую клавиатуру с вашими кнопками
     keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons_row1 = ["Торговые советники"]
-    buttons_row2 = ["Расчет профита", "FAQ"]
-    buttons_row3 = ["Новости недели"]
+    buttons_row2 = ["Расчет профита", "Новости недели"]
+    buttons_row3 = ["Необходимые сервисы", "FAQ"]
     keyboard_markup.add(*buttons_row1)
     keyboard_markup.row(*buttons_row2)
     keyboard_markup.row(*buttons_row3)
@@ -271,12 +288,50 @@ async def process_question_callback(callback_query: types.CallbackQuery):
     await send_pdf(callback_query.from_user.id, question)
 
 
-# Обработка нажатия на кнопку "Необходимые сервисы"
-@dp.callback_query_handler(lambda query: query.data == "services")
-async def process_services_callback(callback_query: types.CallbackQuery):
+@dp.callback_query_handler(lambda query: query.data == "faq_questions")
+async def open_faq_questions(callback_query: types.CallbackQuery):
     await callback_query.answer()  # Отправляем пустой ответ, чтобы убрать "часики" у пользователя
+    inline_keyboard_markup = types.InlineKeyboardMarkup(row_width=1)
+    for key, value in faq_dict.items():
+        question = value[0]
+        inline_keyboard_markup.add(types.InlineKeyboardButton(text=question, callback_data=key))
+    await bot.send_message(callback_query.from_user.id, "Часто задаваемые вопросы:",
+                           reply_markup=inline_keyboard_markup)
 
-    # Отправка URL-кнопок для "Необходимые сервисы"
+
+@dp.callback_query_handler(lambda query: query.data in faq_dict.keys())
+async def send_faq_answer(callback_query: types.CallbackQuery):
+    question_key = callback_query.data
+    question, answer = faq_dict.get(question_key)
+    await callback_query.message.answer(f"{question}\n\n{answer}")
+
+
+# Создаем новый обработчик для "Установка торгового помощника"
+@dp.callback_query_handler(lambda query: query.data == "faq_assistant")
+async def open_faq_assistant(callback_query: types.CallbackQuery):
+    await callback_query.answer()  # Отправляем пустой ответ, чтобы убрать "часики" у пользователя
+    inline_keyboard_markup = types.InlineKeyboardMarkup(row_width=1)
+
+    # Добавляем вопросы из "Часто задаваемые вопросы" в раздел "Установка торгового помощника"
+    for callback_data, question in questions_dict.items():
+        inline_keyboard_markup.add(types.InlineKeyboardButton(question, callback_data=f"faq_answer_{callback_data}"))
+    await bot.send_message(callback_query.from_user.id, "Установка торгового помощника:",
+                           reply_markup=inline_keyboard_markup)
+
+
+# Обработчик для вопросов и ответов в разделе "Установка торгового помощника"
+@dp.callback_query_handler(lambda query: query.data.startswith("faq_answer_"))
+async def process_faq_assistant_answer_callback(callback_query: types.CallbackQuery):
+    await callback_query.answer()  # Отправляем пустой ответ, чтобы убрать "часики" у пользователя
+    question_key = callback_query.data[len("faq_answer_"):]  # Получаем ключ вопроса из callback_data
+    question = questions_dict.get(question_key)
+    if question:
+        await send_pdf(callback_query.from_user.id, question_key)  # Отправляем PDF-файл с именем вопроса
+
+
+# Обработка нажатия на кнопку "Необходимые сервисы"
+@dp.message_handler(lambda message: message.text == "Необходимые сервисы")
+async def process_services_callback(message: types.Message):
     inline_keyboard_markup = types.InlineKeyboardMarkup(row_width=1)
     url_buttons = {
         "ROBOFOREX": "https://my.roboforex.com/en/?a=eerz",
@@ -288,18 +343,21 @@ async def process_services_callback(callback_query: types.CallbackQuery):
     for text, url in url_buttons.items():
         inline_keyboard_markup.add(types.InlineKeyboardButton(text, url=url))
 
-    await bot.send_message(callback_query.from_user.id, "Необходимые сервисы:", reply_markup=inline_keyboard_markup)
+    await bot.send_message(message.from_user.id, "Необходимые сервисы:", reply_markup=inline_keyboard_markup)
 
 
 @dp.callback_query_handler(lambda query: query.data == "faq")
 async def open_faq(callback_query: types.CallbackQuery):
-    await callback_query.answer()  # Отправляем пустой ответ, чтобы убрать "часики" у пользователя
+    await callback_query.answer()
     inline_keyboard_markup = types.InlineKeyboardMarkup(row_width=1)
-    inline_keyboard_markup.add(types.InlineKeyboardButton("Необходимые сервисы", callback_data="services"))
-    for callback_data, question in questions_dict.items():
-        inline_keyboard_markup.add(types.InlineKeyboardButton(question, callback_data=callback_data))
+    inline_keyboard_markup.add(types.InlineKeyboardButton("Часто задаваемые вопросы", callback_data="faq_questions"))
+    inline_keyboard_markup.add(types.InlineKeyboardButton("Установка торгового помощника", callback_data="faq_assistant"))
 
-    await bot.send_message(callback_query.from_user.id, "Выберите вопрос:", reply_markup=inline_keyboard_markup)
+    await bot.send_message(callback_query.from_user.id, "Выберите раздел:", reply_markup=inline_keyboard_markup)
+
+
+async def send_answer(chat_id, question, answer):
+    await bot.send_message(chat_id, f"{question}\n\n{answer}")
 
 
 # Обработчики кнопок
@@ -309,11 +367,10 @@ async def handle_button_click(message: types.Message):
         await send_robot_options(message)
     elif message.text == "FAQ":
         inline_keyboard_markup = types.InlineKeyboardMarkup(row_width=1)
-        inline_keyboard_markup.add(types.InlineKeyboardButton("Необходимые сервисы", callback_data="services"))
-        for callback_data, question in questions_dict.items():
-            inline_keyboard_markup.add(types.InlineKeyboardButton(question, callback_data=callback_data))
+        inline_keyboard_markup.add(types.InlineKeyboardButton("Часто задаваемые вопросы", callback_data="faq_questions"))
+        inline_keyboard_markup.add(types.InlineKeyboardButton("Установка торгового помощника", callback_data="faq_assistant"))
 
-        await message.answer("Выберите вопрос:", reply_markup=inline_keyboard_markup)
+        await bot.send_message(message.from_user.id, "Выберите раздел:", reply_markup=inline_keyboard_markup)
     elif message.text == "Новости недели":
         today = datetime.today()
         monday = today - timedelta(days=today.weekday())
