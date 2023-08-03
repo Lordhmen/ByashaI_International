@@ -35,15 +35,16 @@ questions_dict = {
     'forex_for_beginners': "FOREX для начинающих"
 }
 
-
 # Загрузка списка картинок
 images_list = ['images/1.jpg', 'images/2.jpg', 'images/3.jpg', 'images/4.jpg', 'images/5.jpg', 'images/6.jpg']
+
 
 # Функция для создания инлайн кнопки "Далее"
 def get_inline_keyboard():
     inline_keyboard = InlineKeyboardMarkup()
     inline_keyboard.add(InlineKeyboardButton("Далее", callback_data="next"))
     return inline_keyboard
+
 
 # Функция для отправки следующей картинки
 async def send_next_image(message: types.Message):
@@ -61,6 +62,7 @@ async def send_next_image(message: types.Message):
     else:
         await show_main_menu(message)
 
+
 # Функция для показа главного меню
 async def show_main_menu(message: types.Message):
     keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -72,11 +74,13 @@ async def show_main_menu(message: types.Message):
     keyboard_markup.row(*buttons_row3)
     await message.answer("Привет! Что вас интересует?", reply_markup=keyboard_markup)
 
+
 # Обработчик команды /start
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     send_next_image.current_image_index = 0
     await send_next_image(message)
+
 
 # Обработчик нажатия на инлайн кнопку "Далее"
 @dp.callback_query_handler(lambda c: c.data == 'next')
@@ -182,46 +186,69 @@ class ProfitCalculationState(StatesGroup):
 
 
 async def ask_for_amount(message: types.Message):
-    await message.reply("Введите сумму для расчета:")
+    # Создаем клавиатуру с кнопкой "Закончить расчет профита"
+    keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard_markup.add(types.KeyboardButton("Закончить расчет профита"))
+
+    await message.reply("Введите сумму для расчета:", reply_markup=keyboard_markup)
+    await ProfitCalculationState.waiting_for_amount.set()
 
 
-@dp.message_handler(lambda message: message.text.isdigit(), state=ProfitCalculationState.waiting_for_amount)
+@dp.message_handler(state=ProfitCalculationState.waiting_for_amount)
 async def process_amount(message: types.Message, state: FSMContext):
-    sum_for_calculation = message.text
-    await state.update_data(sum_for_calculation=sum_for_calculation)
+    if message.text.isdigit():
+        sum_for_calculation = message.text
+        await state.update_data(sum_for_calculation=sum_for_calculation)
 
-    keyboard_markup = types.InlineKeyboardMarkup(row_width=3)
-    options = ["0.01", "0.015", "0.02"]
-    buttons = [types.InlineKeyboardButton(text=option, callback_data=option) for option in options]
-    keyboard_markup.add(*buttons)
+        keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard_markup.add("0.01", "0.015", "0.02")
+        keyboard_markup.add("Закончить расчет профита")
 
-    await message.reply("Выберите лот:", reply_markup=keyboard_markup)
-    await ProfitCalculationState.waiting_for_lot.set()
+        await message.reply("Выберите лот:", reply_markup=keyboard_markup)
+        await ProfitCalculationState.waiting_for_lot.set()
+    else:
+        await finish_profit_calculation(message, state)
+        return
 
 
-@dp.callback_query_handler(lambda query: query.data in ["0.01", "0.015", "0.02"],
-                           state=ProfitCalculationState.waiting_for_lot)
-async def process_profit_calculation(query: types.CallbackQuery, state: FSMContext):
-    selected_lot = float(query.data)
-    data = await state.get_data()
-    sum_for_calculation = data.get("sum_for_calculation")
+@dp.message_handler(state=ProfitCalculationState.waiting_for_lot)
+async def process_profit_calculation(message: types.Message, state: FSMContext):
+    if message.text in ["0.01", "0.015", "0.02"]:
+        data = await state.get_data()
+        sum_for_calculation = data.get("sum_for_calculation")
 
-    orders = {
-        "0.01": [0.18, 0.3, 0.5, 0.83, 1.32, 2.175, 3.59, 5.925, 9.78, 16.14, 26.635],
-        "0.015": [0.27, 0.45, 0.75, 1.245, 1.98, 3.265, 5.385, 8.8875, 14.67, 24.21, 39.9525],
-        "0.02": [0.36, 0.6, 1, 1.66, 2.64, 4.35, 7.18, 11.85, 19.56, 32.28, 53.27],
-    }
+        orders = {
+            "0.01": [0.18, 0.3, 0.5, 0.83, 1.32, 2.175, 3.59, 5.925, 9.78, 16.14, 26.635],
+            "0.015": [0.27, 0.45, 0.75, 1.245, 1.98, 3.265, 5.385, 8.8875, 14.67, 24.21, 39.9525],
+            "0.02": [0.36, 0.6, 1, 1.66, 2.64, 4.35, 7.18, 11.85, 19.56, 32.28, 53.27],
+        }
 
-    result_message = "Напоминаю, лот завышать нельзя! Работаем не больше 0.02/1000 баксов, имея при таком лоте 100% долив. Прибыль указана приблизительно, так как существуют еще комиссии и очередность исполнения ордеров по достижению take-profit цены\n\n"
-    for i, order in enumerate(orders[query.data], 10):
-        profit = float(sum_for_calculation) / 100 * order
-        result_message += f"{i}ый ордер {profit:.2f}$ | {order:.2f}%\n"
+        result_message = "Напоминаю, лот завышать нельзя! Работаем не больше 0.02/1000 баксов, имея при таком лоте 100% долив. Прибыль указана приблизительно, так как существуют еще комиссии и очередность исполнения ордеров по достижению take-profit цены\n\n"
+        for i, order in enumerate(orders[message.text], 10):
+            profit = float(sum_for_calculation) / 100 * order
+            result_message += f"{i}ый ордер {profit:.2f}$ | {order:.2f}%\n"
 
-    await query.answer()
-    await bot.send_message(chat_id=query.from_user.id, text=result_message)
+        await bot.send_message(chat_id=message.from_user.id, text=result_message)
+    else:
+        await finish_profit_calculation(message, state)
+        return
 
+
+@dp.message_handler(lambda message: message.text == "Закончить расчет профита")
+async def finish_profit_calculation(message: types.Message, state: FSMContext):
     # Сброс состояния
     await state.finish()
+
+    # Создаем новую клавиатуру с вашими кнопками
+    keyboard_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons_row1 = ["Торговые советники"]
+    buttons_row2 = ["Расчет профита", "FAQ"]
+    buttons_row3 = ["Новости недели"]
+    keyboard_markup.add(*buttons_row1)
+    keyboard_markup.row(*buttons_row2)
+    keyboard_markup.row(*buttons_row3)
+
+    await message.answer("Расчет профита завершен.", reply_markup=keyboard_markup)
 
 
 # Функция для отправки пользователю PDF-файла
@@ -303,7 +330,6 @@ async def handle_button_click(message: types.Message):
 @dp.message_handler(lambda message: message.text.lower() == "расчет профита")
 async def start_profit_calculation(message: types.Message, state: FSMContext):
     await ask_for_amount(message)
-    await ProfitCalculationState.waiting_for_amount.set()
 
 
 if __name__ == '__main__':
